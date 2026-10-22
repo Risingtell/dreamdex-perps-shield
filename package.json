@@ -8,6 +8,7 @@
   "dependencies": {
     "@somnia-chain/markets-sdk": "^0.32.1",
     "dotenv": "^18.0.8",
+    "solc": "^0.8.28",
     "viem": "^2.57.10"
   },
   "license": "MIT",
