@@ -1,0 +1,15 @@
+{
+  "name": "dreamdex-perps-shield",
+  "version": "1.0.0",
+  "description": "dreamDEX Perps Builder Bounty: feedback and a Reactivity-driven position guard on Somnia Hideki",
+  "scripts": {},
+  "keywords": [],
+  "type": "module",
+  "dependencies": {
+    "@somnia-chain/markets-sdk": "^0.32.1",
+    "dotenv": "^18.0.8",
+    "viem": "^2.57.10"
+  },
+  "license": "MIT",
+  "private": true
+}
