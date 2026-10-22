@@ -29,6 +29,13 @@ on Hideki receives nothing, and the user has to bridge the coins back.
   Hideki balance fell by the same amounts (62.25 to 24.25 STT around the 38 STT withdrawal).
 - Recovered with the SDK bridge (`createBridgeTransfer`, Shannon to Hideki), Shannon tx
   `0x7827cd30e302743c99e230d27c9728a5ece0b5737da32bad0c858b845a84d837`; 43 STT delivered on Hideki.
+- USDso does the same. A 100 USDso withdrawal to the same recipient at 17:18 UTC+1 crossed
+  the USDso warp route from Hideki to Shannon (`ReceivedTransferRemote`, origin 50383, tx
+  `0x0578a8f84d56a8df58d6830916fcc6d66cc6376d5a776d52b7dd7221afbf7eb2`), then the app
+  forwarded it on Shannon (tx `0x4bf908f4015de0598a8fdaeff0b461708480a80f1a5990f4a329601bd9aac041`).
+  History again reads "To Somnia". The recipient holds 0 USDso on Hideki and 100 on
+  Shannon, and the USDso route back to Hideki reverts (see
+  [004](004-usdso-bridge-shannon-to-hideki-reverts.md)), so these funds cannot return.
 
 ## Environment
 dreamDEX testnet app, 22 Oct 2026, ~11:56 and 12:00 UTC+1. Hideki testnet (50383) and

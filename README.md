@@ -11,6 +11,7 @@ Each issue found while building on the dreamDEX Perps API, SDK and app is one fi
 | 001 | [Withdraw shows "Chain: Hideki Testnet" but delivers the STT on Somnia Shannon](feedback/001-withdraw-says-hideki-but-delivers-on-shannon.md) | major | app |
 | 002 | ["Link a bot" refuses a contract address, so on-chain automation cannot trade a user's account](feedback/002-link-a-bot-refuses-contract-operators.md) | major | app |
 | 003 | [An unlinked operator gets `OnlyApprovedContracts`, which is undocumented and points the wrong way](feedback/003-unlinked-operator-gets-onlyapprovedcontracts.md) | normal | contracts |
+| 004 | [USDso cannot be bridged from Shannon to Hideki: every transfer reverts inside the router's hook](feedback/004-usdso-bridge-shannon-to-hideki-reverts.md) | major | contracts |
 
 ## MVP
 
@@ -18,7 +19,7 @@ In progress: a perps position guard on Hideki that is woken by Somnia Reactivity
 
 ## Scripts
 
-`scripts/bridge-stt-to-hideki.mjs` moves a wallet's STT from Somnia Shannon to Hideki through the Somnia Markets SDK bridge. It runs as a dry run, with a destination-liquidity check, unless you pass `--send`.
+`scripts/bridge-stt-to-hideki.mjs` moves a wallet's STT (or USDso, with `--token USDso`) from Somnia Shannon to Hideki through the Somnia Markets SDK bridge. It runs as a dry run, with a destination-liquidity check, unless you pass `--send`.
 
 ```bash
 npm install
