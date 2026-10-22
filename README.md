@@ -20,7 +20,11 @@ In progress: [`PerpsShield`](contracts/PerpsShield.sol), a perps position guard 
 
 The shield holds the position on its own MarginBank account. Every `intervalSec` the chain wakes it through a one-shot `Schedule` subscription that the shield re-arms itself. On each wake it reads `getAccountHealth`, and when equity falls under `triggerBps` of the maintenance requirement it cuts `trimBps` of the position with an immediate-or-cancel order before the liquidation engine reaches it. Anyone can call `check()`, which can only ever reduce the position. Only the owner can trade, change settings or take money out.
 
-The wake loop is live on Hideki: shield `0x7d662c7bbff7aa9aaf20b036ebe6c53f6941e3e5` was woken four times, 20 seconds apart, at about 0.002 STT a wake (for example `0xcf58dfeb39cbb895e2a6743db6fb4eee1ad1416a4f109eaf662e35e5b51157f3`). It is disarmed until it holds a position: the USDso to fund one is held up by [004](feedback/004-usdso-bridge-shannon-to-hideki-reverts.md) and [005](feedback/005-voucher-eligibility-says-eligible-but-claim-reverts.md).
+**Your wallet keeps the money.** The shield is a linked child of the owner's wallet on dreamDEX's linked-wallet rail: the wallet proposes the link, the shield accepts it with `linkMain`, and from then on each order the shield places draws its margin shortfall from the wallet. The MarginBank books that as the wallet's claim, so the shield can trade it but can never withdraw it, and the wallet can recall it at any time. `depositMargin` is there for a shield funded directly instead.
+
+**Strangers cannot drain the wake loop.** Anyone can point their own Reactivity subscription at a handler contract. The shield only acts on a `Schedule` wake from the precompile stamped at or after the time it booked last, and each accepted wake books the next one later than anything pending, so extra subscriptions cannot multiply the loop. `test/wake-guard.mjs` checks this against the deployed shield by simulating callbacks from the precompile address.
+
+The current shield is `0xd4ac1ebfcd5446c7bf768c566888cedf40180f8f`, linked to its owner `0x29FD4dDD9793e83fe216c398a2e81BF9Cd82FB41` (`quotePerpFundingPayer` returns that wallet as payer). Its wake loop ran on Hideki three times, 30 seconds apart, at about 0.002 STT a wake: `0xe012707f059c981ee1f378321c8b69ceac2c684edfe5896c0096bc152b415c70`, `0x26c1099c218465b536fc03f017f091841d91b24684cfd7c2cc90835caa2bd419`, `0x63e626f09a38864f8b52481a266d1a6f9f01bf534fa69b948956c71d4ebf5557`. It is disarmed until it holds a position: the USDso to fund one is held up by [004](feedback/004-usdso-bridge-shannon-to-hideki-reverts.md) and [005](feedback/005-voucher-eligibility-says-eligible-but-claim-reverts.md).
 
 ## Scripts
 
@@ -37,4 +41,4 @@ node scripts/bridge-stt-to-hideki.mjs 10 --send   # bridge 10 STT
 
 `scripts/probe-contract-caller.mjs` and `scripts/probe-contract-own-account.mjs` are the read-only checks behind feedback 002 and 003, and `scripts/probe-voucher-claim.mjs` is the one behind 005. They use `eth_call` and send nothing.
 
-`scripts/shield.mjs` drives a PerpsShield with the `.env` key as owner: `deploy`, `status`, `fund <stt>`, `open <long|short> <usd>`, `settings <trigger> <trim> <slippage> <interval>`, `arm`, `disarm`, `check` and `close`.
+`scripts/shield.mjs` drives a PerpsShield with the `.env` key as owner: `deploy`, `status`, `fund <stt>`, `link [allowance]`, `unlink`, `deposit <usdso>`, `open <long|short> <usd>`, `settings <trigger> <trim> <slippage> <interval>`, `arm`, `disarm`, `check` and `close`.

@@ -6,6 +6,12 @@
 //   open <long|short> <usd>        market order for about <usd> of notional
 //   settings <trigger> <trim> <slip> <interval> [gas]   bps, bps, bps, seconds
 //   fund <stt>                     send STT to the shield to pay for wake-ups
+//   deposit <usdso>                send USDso to the shield and move it into its margin
+//   link [allowance]               link the shield to this wallet: the wallet proposes,
+//                                  approves the MarginBank for [allowance] USDso (default
+//                                  1000), and the shield accepts. The wallet then funds the
+//                                  shield's margin on each order and can recall it any time.
+//   unlink                         end the link from the shield's side
 //   arm | disarm | check           start or stop the wake loop, or run the guard once
 //   close                          market-close the whole position
 import "dotenv/config";
@@ -23,6 +29,9 @@ const LOT = 1000n;
 const MIN_QTY = 13000n;
 const ORDER_IOC = 2;
 const poolAbi = parseAbi(["function tryGetMarkPrice() view returns (bool ok, uint256 price)"]);
+const erc20Abi = parseAbi(["function transfer(address to, uint256 amount) returns (bool)", "function approve(address spender, uint256 amount) returns (bool)", "function balanceOf(address) view returns (uint256)"]);
+const registryAbi = parseAbi(["function proposeLink(address child)", "function areLinked(address a, address b) view returns (bool)"]);
+const bankLinkAbi = parseAbi(["function getLinkedWalletRegistry() view returns (address)"]);
 const bankAbi = parseAbi(["struct Position { int128 size; uint128 avgEntryPrice; int256 entryFundingIndex; uint64 lastUpdatedTimestampNs; }", "function getPosition(address account, address perpPool) view returns (Position)"]);
 
 const { abi, bytecode } = JSON.parse(readFileSync("artifacts/PerpsShield.json", "utf8"));
@@ -45,6 +54,13 @@ async function send(functionName, a = [], opts = {}) {
   for (const log of parseEventLogs({ abi, logs: receipt.logs })) console.log("  event", log.eventName, fmtArgs(log.args));
   if (receipt.status !== "success") process.exit(1);
   return receipt;
+}
+
+async function sendRaw(label, request) {
+  const hash = await wallet.writeContract(request);
+  const receipt = await pc.waitForTransactionReceipt({ hash });
+  console.log(label, receipt.status, hash);
+  if (receipt.status !== "success") process.exit(1);
 }
 
 const fmtArgs = (o) => JSON.stringify(o, (k, v) => (typeof v === "bigint" ? v.toString() : v));
@@ -115,11 +131,28 @@ switch (cmd) {
     console.log("fund", (await pc.waitForTransactionReceipt({ hash })).status, hash);
     break;
   }
+  case "deposit": {
+    const amount = parseEther(args[0]);
+    await sendRaw("transfer", { address: USDSO, abi: erc20Abi, functionName: "transfer", args: [shield(), amount] });
+    await send("depositMargin", [amount]);
+    break;
+  }
+  case "link": {
+    const registry = await pc.readContract({ address: MARGIN_BANK, abi: bankLinkAbi, functionName: "getLinkedWalletRegistry" });
+    await sendRaw("proposeLink", { address: registry, abi: registryAbi, functionName: "proposeLink", args: [shield()] });
+    await sendRaw("approve MarginBank", { address: USDSO, abi: erc20Abi, functionName: "approve", args: [MARGIN_BANK, parseEther(args[0] ?? "1000")] });
+    await send("linkMain", [account.address]);
+    console.log("linked", await pc.readContract({ address: registry, abi: registryAbi, functionName: "areLinked", args: [account.address, shield()] }));
+    break;
+  }
+  case "unlink":
+    await send("unlinkMain", [account.address]);
+    break;
   case "arm":
   case "disarm":
   case "check":
     await send(cmd);
     break;
   default:
-    console.log("commands: deploy status claim open close settings fund arm disarm check");
+    console.log("commands: deploy status claim open close settings fund deposit link unlink arm disarm check");
 }

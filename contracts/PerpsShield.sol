@@ -12,7 +12,16 @@ interface IMarginBank {
     function getAccountHealth(address account) external view returns (int256 equity, uint256 imReq, uint256 mmReq, uint256 cmReq);
     function getPosition(address account, address perpPool) external view returns (Position memory);
     function getCreditGranter() external view returns (address);
+    function getLinkedWalletRegistry() external view returns (address);
+    function deposit(uint256 amount) external;
     function withdraw(uint256 amount) external;
+}
+
+/// @notice dreamDEX linked-wallet consent graph. A linked main funds this account's margin
+///         shortfall as a claim this account can never withdraw.
+interface ILinkedWalletRegistry {
+    function acceptLink(address main) external;
+    function unlink(address counterparty) external;
 }
 
 interface IPerpPool {
@@ -38,6 +47,7 @@ interface IVoucherDistributor {
 interface IERC20 {
     function balanceOf(address) external view returns (uint256);
     function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
 }
 
 /// @notice The Somnia on-chain reactivity precompile at 0x0100.
@@ -138,6 +148,24 @@ contract PerpsShield {
         IVoucherDistributor(bank.getCreditGranter()).claim();
     }
 
+    /// @notice Move USDso already sent to this contract into its MarginBank balance.
+    function depositMargin(uint256 amount) external onlyOwner {
+        if (!collateral.approve(address(bank), amount)) revert TransferFailed();
+        bank.deposit(amount);
+    }
+
+    /// @notice Accept a link the owner's wallet proposed with `proposeLink(this)`. From then on
+    ///         the wallet funds this account's margin shortfall on each order, and the bank
+    ///         records it as the wallet's claim: this contract can trade it but never withdraw it,
+    ///         and the wallet can recall it at any time.
+    function linkMain(address main) external onlyOwner {
+        ILinkedWalletRegistry(bank.getLinkedWalletRegistry()).acceptLink(main);
+    }
+
+    function unlinkMain(address main) external onlyOwner {
+        ILinkedWalletRegistry(bank.getLinkedWalletRegistry()).unlink(main);
+    }
+
     /// @notice Place an order on this account. Opening and adding to the position is owner-only.
     function placeOrder(bool isBid, uint256 price, uint256 quantity, uint8 orderType) external onlyOwner {
         pool.placeOrder(isBid, 0, price, quantity, _expiryNs(), orderType, 0, address(0), 0);
@@ -192,11 +220,18 @@ contract PerpsShield {
     }
 
     /// @notice Called by the chain when a scheduled wake fires.
-    /// @dev The guard runs in its own frame so a revert inside it, such as a dead oracle,
-    ///      cannot undo the re-arm and end the loop.
-    function onEvent(address, bytes32[] calldata, bytes calldata) external {
+    /// @dev Anyone can point their own subscription at this handler, so only a Schedule wake at
+    ///      or after the time this contract booked last is acted on. The chain stamps a wake with
+    ///      the millisecond it fired, a little after the booked time, so the check is >= rather
+    ///      than ==. Each accepted wake books the next one later than any wake already pending,
+    ///      so a stranger's extra subscriptions cannot multiply the loop and drain its STT. The
+    ///      guard runs in its own frame so a revert inside it, such as a dead oracle, cannot undo
+    ///      the re-arm and end the loop.
+    function onEvent(address emitter, bytes32[] calldata topics, bytes calldata) external {
         if (msg.sender != SOMNIA_REACTIVITY) revert NotReactivity(msg.sender);
-        if (armed) _scheduleNext();
+        if (emitter != SOMNIA_REACTIVITY || topics.length < 2 || topics[0] != TOPIC_SCHEDULE) return;
+        if (!armed || nextWakeMs == 0 || uint256(topics[1]) < nextWakeMs) return;
+        _scheduleNext();
         try this.guardFromWake() {}
         catch (bytes memory reason) {
             emit GuardFailed(reason);
